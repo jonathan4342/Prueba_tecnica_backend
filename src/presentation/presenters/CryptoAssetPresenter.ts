@@ -3,10 +3,7 @@ import { CryptoAsset } from "../../domain/entities/CryptoAsset";
 import { IPresenter } from "../shared/IPresenter";
 import { CryptoAssetView } from "../views/CryptoAssetView";
 
-/**
- * Implementa la interfaz genérica IPresenter<CryptoAsset, CryptoAssetView>.
- * Es el único sitio donde se decide cómo se formatea el activo hacia el cliente.
- */
+
 @injectable()
 export class CryptoAssetPresenter implements IPresenter<CryptoAsset, CryptoAssetView> {
   public present(asset: CryptoAsset): CryptoAssetView {

@@ -1,3 +1,4 @@
-export interface IUseCase<I, O> {
-    execute(params: I): O;
+
+export interface IUseCase<TInput, TOutput> {
+  execute(input: TInput): Promise<TOutput>;
 }

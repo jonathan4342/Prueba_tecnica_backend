@@ -4,11 +4,7 @@ import { LoginUserOutput } from "../../domain/ports/in/ILoginUserUseCase";
 import { IPresenter } from "../shared/IPresenter";
 import { LoginView, RegisterView } from "../views/AuthView";
 
-/**
- * El AuthPresenter expone dos presentadores encapsulados, cada uno
- * implementando la interfaz genérica IPresenter<TDomain, TView>
- * para un caso de uso distinto.
- */
+
 @injectable()
 export class AuthPresenter {
   public readonly register: IPresenter<RegisterUserOutput, RegisterView> = {

@@ -13,10 +13,7 @@ export interface JwtConfig {
   expiresIn: string;
 }
 
-/**
- * Adaptador driven que implementa ITokenService con jsonwebtoken.
- * Al dominio sólo le llegan los métodos sign/verify.
- */
+
 @injectable()
 export class JwtTokenService implements ITokenService {
   constructor(
