@@ -4,7 +4,7 @@ import { Container } from "inversify";
 import { Application } from "express";
 
 import { buildApp } from "../../src/presentation/server";
-import { TYPES } from "../../src/shared/container/types";
+import { TYPES } from "../../src/commons/container/types";
 import { AuthMiddleware } from "../../src/presentation/middlewares/authMiddleware";
 
 import { GetTopCryptoAssetsUseCase } from "../../src/application/use-cases/GetTopCryptoAssetsUseCase";

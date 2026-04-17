@@ -9,13 +9,7 @@ import { ICryptoQueryLogRepository } from "../../domain/ports/out/ICryptoQueryLo
 import { ValidationError } from "../../commons/errors/AppError";
 import { TYPES } from "../../commons/container/types";
 
-/**
- * Caso de uso: obtener el top N de activos financieros.
- *
- * Implementa la interfaz genérica IUseCase<GetTopCryptoAssetsInput, CryptoAsset[]>
- * vía el alias IGetTopCryptoAssetsUseCase. Depende sólo de puertos, no
- * de clases concretas.
- */
+
 @injectable()
 export class GetTopCryptoAssetsUseCase implements IGetTopCryptoAssetsUseCase {
   constructor(
@@ -37,7 +31,6 @@ export class GetTopCryptoAssetsUseCase implements IGetTopCryptoAssetsUseCase {
 
     const assets = await this.provider.fetch({ limit, vsCurrency });
 
-    // Fire-and-forget: no bloqueamos al usuario si falla la DB.
     this.logRepository
       .save({
         userId: input.userId ?? null,
@@ -46,7 +39,6 @@ export class GetTopCryptoAssetsUseCase implements IGetTopCryptoAssetsUseCase {
         itemsReturned: assets.length
       })
       .catch((err) => {
-        // eslint-disable-next-line no-console
         console.error("[GetTopCryptoAssetsUseCase] log falló:", err);
       });
 

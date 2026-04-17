@@ -1,16 +1,10 @@
-/**
- * Identificadores (symbols) usados por Inversify para enlazar interfaces
- * con sus implementaciones.
- *
- * Las interfaces no existen en runtime en TypeScript, por lo que
- * Inversify necesita un token tangible por cada abstracción.
- */
+
 export const TYPES = {
   // Config / infraestructura compartida
   AppConfig: Symbol.for("AppConfig"),
   DataSource: Symbol.for("DataSource"),
 
-  // Puertos de salida (adapters driven)
+  // Puertos de salida (adapters )
   UserRepository: Symbol.for("IUserRepository"),
   CryptoQueryLogRepository: Symbol.for("ICryptoQueryLogRepository"),
   CryptoProvider: Symbol.for("ICryptoProvider"),

@@ -6,7 +6,7 @@ import {
   CryptoQueryLog,
   ICryptoQueryLogRepository
 } from "../../src/domain/ports/out/ICryptoQueryLogRepository";
-import { ValidationError } from "../../src/shared/errors/AppError";
+import { ValidationError } from "../../src/commons/errors/AppError";
 
 /**
  * Ventaja de la arquitectura + interfaces genéricas:

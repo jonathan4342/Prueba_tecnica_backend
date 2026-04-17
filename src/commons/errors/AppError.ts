@@ -1,17 +1,13 @@
-/**
- * Error de dominio / aplicación con código HTTP asociado.
- * El errorHandler de Express lo convierte en respuesta JSON.
- */
 export class AppError extends Error {
   public readonly status: number;
   public readonly code: string;
 
   constructor(message: string, status = 500, code = "INTERNAL_ERROR") {
     super(message);
-    this.name = "AppError";
+    this.name = new.target.name;
     this.status = status;
     this.code = code;
-    Object.setPrototypeOf(this, AppError.prototype);
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -34,7 +30,7 @@ export class ConflictError extends AppError {
 }
 
 export class ValidationError extends AppError {
-  constructor(message = "Datos inválidos") {
+  constructor(message = "Datos invalidos") {
     super(message, 400, "VALIDATION_ERROR");
   }
 }

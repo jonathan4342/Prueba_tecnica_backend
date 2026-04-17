@@ -18,14 +18,6 @@ interface CoinGeckoMarketResponse {
   last_updated: string;
 }
 
-/**
- * Adaptador driven que implementa el puerto genérico ICryptoProvider
- * (= IExternalDataProvider<CryptoProviderQuery, CryptoAsset[]>).
- *
- * Si mañana conectamos a Binance o CoinMarketCap, se escribe otro
- * adaptador que implemente la MISMA interfaz y se cambia el binding en
- * el contenedor Inversify; el resto del código no se entera.
- */
 @injectable()
 export class CoinGeckoAdapter implements ICryptoProvider {
   private readonly http: AxiosInstance;
@@ -57,7 +49,6 @@ export class CoinGeckoAdapter implements ICryptoProvider {
         }
       );
 
-      // TRANSFORMACIÓN: no devolvemos la respuesta tal cual.
       return data.map(
         (raw) =>
           new CryptoAsset(

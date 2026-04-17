@@ -23,7 +23,7 @@ API REST en **Node.js + Express + TypeScript** con **arquitectura hexagonal** (p
 ```
 
 2. Autenticación JWT: `POST /auth/register` y `POST /auth/login`. `/external-data` requiere `Authorization: Bearer <token>`.
-3. Persistencia con **TypeORM** (SQLite por defecto, PostgreSQL en Azure) usando *entities* y *repositories*.
+3. Persistencia con **TypeORM** (SQLite por defecto, **SQL Server / Azure SQL** en producción) usando *entities* y *repositories*.
 4. Registro de cada consulta al endpoint externo en la tabla `crypto_query_logs`.
 5. Manejo centralizado de errores con clases de dominio (`AppError`, `ValidationError`, `UnauthorizedError`, …).
 6. Tests unitarios y de integración (Jest + supertest) que corren sin red ni base de datos.
@@ -218,11 +218,22 @@ Ver `.env.example`. Las más relevantes:
 | Variable | Descripción | Por defecto |
 | -------- | ----------- | ----------- |
 | `PORT` | Puerto HTTP | `3000` |
-| `DB_TYPE` | `sqlite` o `postgres` | `sqlite` |
-| `DB_DATABASE` | Ruta SQLite o nombre de DB | `./data/app.db` |
+| `DB_TYPE` | `sqlite`, `postgres` o `mssql` | `sqlite` |
+| `DB_HOST` | Host (SQL Server / Postgres) | — |
+| `DB_PORT` | Puerto (SQL Server: `1433`) | — |
+| `DB_USERNAME` | Usuario | — |
+| `DB_PASSWORD` | Password | — |
+| `DB_DATABASE` | Ruta SQLite o nombre de BD | `./data/app.db` |
+| `DB_SSL` | TLS contra la BD (true en Azure) | `true` |
+| `DB_TRUST_SERVER_CERTIFICATE` | Confiar en cert self-signed (SQL Server local) | `false` |
+| `DB_SYNCHRONIZE` | TypeORM sincroniza el esquema al arrancar | `false` |
 | `JWT_SECRET` | Secreto para firmar JWT | (obligatorio en prod) |
 | `JWT_EXPIRES_IN` | Expiración | `1h` |
 | `COINGECKO_BASE_URL` | URL base de la API externa | `https://api.coingecko.com/api/v3` |
+| `AZURE_STORAGE_ACCOUNT` | Cuenta de Storage para SAS | — |
+| `AZURE_STORAGE_KEY` | Clave primaria de la cuenta | — |
+| `AZURE_STORAGE_CONTAINER` | Contenedor de blobs | `uploads` |
+| `AZURE_STORAGE_SAS_TTL_MINUTES` | Duración del SAS | `10` |
 
 ---
 
@@ -231,119 +242,179 @@ Ver `.env.example`. Las más relevantes:
 ### Arquitectura propuesta
 
 ```
-GitHub (main) ──► Azure App Service (Node.js)
-                         │
-                         ├── Azure Database for PostgreSQL (flexible server)
-                         └── Azure Blob Storage (para uploads, firmados con SAS)
+GitHub (main) ──► GitHub Actions ──► Azure App Service (Node 20, Linux)
+                                               │
+                                               ├── Azure SQL Database (TypeORM, driver mssql)
+                                               └── Azure Blob Storage (uploads firmados con SAS)
 ```
 
-### 1. Azure App Service
+Tres recursos por encima del App Service: **Resource Group**, **App Service Plan** y **SQL Server**. Todo puede montarse desde la CLI (`az`) o desde el portal; a continuación el camino por CLI, que es el más reproducible.
 
-Crear un App Service Linux con runtime **Node 20**:
+### 1. Crear Resource Group y App Service (Node 20)
 
 ```bash
-# Login y variables
 az login
+
 RG=prueba-backend-rg
 APP=prueba-tecnica-api
-LOCATION=westeurope
+LOCATION=eastus2
 
 az group create -n $RG -l $LOCATION
 az appservice plan create -g $RG -n ${APP}-plan --sku B1 --is-linux
 az webapp create -g $RG -p ${APP}-plan -n $APP --runtime "NODE:20-lts"
+
+# Azure pone la app a escuchar en $PORT y espera `npm start`.
+# Nuestro `package.json` ya expone `start = node dist/main.js`, así que no hace falta custom startup command.
+az webapp config set -g $RG -n $APP --startup-file "npm start"
 ```
 
-### 2. Configurar variables de entorno (App Settings)
+La app queda accesible en `https://<APP>.azurewebsites.net` con HTTPS y certificado gestionado por Azure.
+
+### 2. Crear Azure SQL Database
+
+```bash
+SQL_SERVER=prueba-sql-$RANDOM          # nombre DNS globalmente único
+SQL_DB=appdb
+SQL_ADMIN=adminuser
+SQL_PASSWORD='Str0ng!Passw0rd_ChangeMe'
+
+az sql server create \
+  -g $RG -n $SQL_SERVER -l $LOCATION \
+  --admin-user $SQL_ADMIN --admin-password "$SQL_PASSWORD"
+
+# Permite que los servicios de Azure (App Service) lleguen al server.
+az sql server firewall-rule create \
+  -g $RG -s $SQL_SERVER \
+  -n AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0
+
+az sql db create \
+  -g $RG -s $SQL_SERVER -n $SQL_DB \
+  --service-objective Basic
+```
+
+Esto genera el host `<SQL_SERVER>.database.windows.net`, puerto **1433**, TLS obligatorio. TypeORM ya está configurado para usar el driver `mssql` cuando `DB_TYPE=mssql`; el paquete `mssql` está en `package.json`.
+
+> La primera vez, lanzar la app con `DB_SYNCHRONIZE=true` basta para que TypeORM cree las tablas `users` y `crypto_query_logs`. En entornos reales se migraría a `typeorm migration:run` durante el deploy y se dejaría `DB_SYNCHRONIZE=false`.
+
+### 3. Configurar variables de entorno (App Settings)
+
+En App Service las *Application settings* se inyectan como `process.env.X`:
 
 ```bash
 az webapp config appsettings set -g $RG -n $APP --settings \
   NODE_ENV=production \
   PORT=8080 \
-  DB_TYPE=postgres \
-  DB_HOST=prueba-db.postgres.database.azure.com \
-  DB_PORT=5432 \
-  DB_USERNAME=adminuser \
-  DB_PASSWORD='<secreto>' \
-  DB_DATABASE=appdb \
+  DB_TYPE=mssql \
+  DB_HOST=${SQL_SERVER}.database.windows.net \
+  DB_PORT=1433 \
+  DB_USERNAME=${SQL_ADMIN} \
+  DB_PASSWORD="$SQL_PASSWORD" \
+  DB_DATABASE=${SQL_DB} \
   DB_SSL=true \
+  DB_TRUST_SERVER_CERTIFICATE=false \
+  DB_SYNCHRONIZE=true \
   JWT_SECRET='<secreto-fuerte>' \
   JWT_EXPIRES_IN=1h \
   COINGECKO_BASE_URL=https://api.coingecko.com/api/v3 \
-  COINGECKO_DEFAULT_VS_CURRENCY=usd
+  COINGECKO_DEFAULT_VS_CURRENCY=usd \
+  AZURE_STORAGE_ACCOUNT=pruebastoracct \
+  AZURE_STORAGE_CONTAINER=uploads \
+  AZURE_STORAGE_SAS_TTL_MINUTES=10 \
+  SCM_DO_BUILD_DURING_DEPLOYMENT=false
 ```
 
-App Service inyecta estas variables al proceso. En `Configuration → Application settings` del portal aparecen como tal. Secretos (`JWT_SECRET`, `DB_PASSWORD`) deberían venir de **Azure Key Vault** referenciados con `@Microsoft.KeyVault(...)`.
+Secretos (`JWT_SECRET`, `DB_PASSWORD`, `AZURE_STORAGE_KEY`) deben moverse a **Azure Key Vault** y referenciarse con `@Microsoft.KeyVault(SecretUri=...)`. `SCM_DO_BUILD_DURING_DEPLOYMENT=false` porque el artefacto ya incluye `dist/` y `node_modules/` desde el pipeline.
 
-### 3. Despliegue desde GitHub (CI/CD)
+### 4. Despliegue desde GitHub
 
-Opción A — desde el portal: **Deployment Center → GitHub → seleccionar repo/branch `main`**. Azure genera automáticamente un workflow en `.github/workflows/` que corre `npm ci && npm run build` y publica en App Service.
+Hay dos maneras; la que trae este repo ya montada es la **B**.
 
-Opción B — por CLI:
+**A) Deployment Center (GUI).** Portal → App Service → *Deployment Center* → *GitHub* → autorizar → elegir repo y branch `main`. Azure inyecta su propio workflow.
+
+**B) GitHub Actions (incluido en este repo).** El workflow `.github/workflows/azure-deploy.yml` hace:
+
+1. `npm ci && npm run build && npm test`.
+2. Empaqueta `dist/`, `node_modules/` y `package.json` en un zip.
+3. Publica con `azure/webapps-deploy@v3` usando el publish profile del App Service.
+
+Para habilitarlo:
 
 ```bash
-az webapp deployment source config \
-  -g $RG -n $APP \
-  --repo-url https://github.com/<usuario>/Prueba_tecnica_backend \
-  --branch main --manual-integration
+# Descarga el publish profile del App Service
+az webapp deployment list-publishing-profiles \
+  -g $RG -n $APP --xml > publish-profile.xml
+
+# Luego en GitHub: Settings → Secrets → Actions → New secret
+# Name:  AZURE_WEBAPP_PUBLISH_PROFILE
+# Value: contenido del publish-profile.xml
 ```
 
-En `package.json` ya está el script `build` y el `start` apunta a `dist/main.js`, que es lo que espera App Service. App Service define automáticamente `WEBSITE_NODE_DEFAULT_VERSION` y ejecuta `npm start`.
-
-La aplicación queda accesible en `https://<APP>.azurewebsites.net` con HTTPS gestionado por Azure.
-
-### 4. Base de datos: Azure Database for PostgreSQL
+Cada push a `main` dispara un deploy. La URL pública es `https://<APP>.azurewebsites.net`. Para verificar:
 
 ```bash
-az postgres flexible-server create \
-  -g $RG -n prueba-db \
-  --admin-user adminuser --admin-password '<secreto>' \
-  --sku-name Standard_B1ms --tier Burstable \
-  --public-access 0.0.0.0  # permite App Service (ajustar a VNET en prod)
-
-az postgres flexible-server db create -g $RG -s prueba-db -d appdb
+curl https://<APP>.azurewebsites.net/health
 ```
 
-`TypeORM` ya está configurado para usar PostgreSQL cuando `DB_TYPE=postgres`. `synchronize: true` es cómodo para la prueba; en producción real se migraría a `typeorm migration:run` en el paso de deploy.
+### 5. Carga de archivos a Azure Blob Storage con SAS
 
-### 5. Carga de archivos a Azure Storage con SAS
+Patrón: **el cliente sube directamente a Blob Storage**, no a la API. El backend sólo firma un SAS de escritura de corta duración. La API no proxea bytes, no hay límite por payload y el ancho de banda va directo al storage.
 
-Aunque este proyecto no incluye aún un endpoint de uploads, el patrón recomendado es **no subir archivos a través de la API**: pedir al cliente que suba directamente a Blob Storage con un **SAS token** generado por el backend. Esto descarga la API y ahorra ancho de banda.
+Setup de recursos:
 
-Flujo:
+```bash
+az storage account create \
+  -g $RG -n pruebastoracct -l $LOCATION --sku Standard_LRS
 
-1. Crear cuenta y contenedor:
-   ```bash
-   az storage account create -g $RG -n pruebastoracct -l $LOCATION --sku Standard_LRS
-   az storage container create --account-name pruebastoracct -n uploads
-   ```
-2. En la API se añadiría un endpoint `POST /uploads/sas` que:
-   - Toma `fileName` y `contentType` del usuario autenticado.
-   - Genera un **SAS de escritura** de corta duración (ej. 10 minutos) con `@azure/storage-blob`:
-     ```ts
-     const sas = generateBlobSASQueryParameters(
-       {
-         containerName: "uploads",
-         blobName: `${userId}/${uuid()}-${fileName}`,
-         permissions: BlobSASPermissions.parse("cw"),
-         expiresOn: new Date(Date.now() + 10 * 60 * 1000),
-         contentType
-       },
-       sharedKeyCredential
-     ).toString();
-     ```
-   - Devuelve al cliente la URL `https://<cuenta>.blob.core.windows.net/uploads/<blob>?<sas>`.
-3. El cliente hace `PUT` directo a esa URL con el binario del archivo. Al subir, sólo ese blob concreto es escribible durante la ventana.
-4. Para descargas privadas se emite un **SAS de lectura** (`r`) con tiempo corto.
+az storage container create \
+  --account-name pruebastoracct -n uploads
+```
 
-Variables en App Settings: `AZURE_STORAGE_ACCOUNT`, `AZURE_STORAGE_KEY` (o mejor `AZURE_STORAGE_CONNECTION_STRING` desde Key Vault), `AZURE_STORAGE_CONTAINER=uploads`.
+En la API se añade un endpoint `POST /uploads/sas` protegido con JWT que:
+
+1. Recibe `{ fileName, contentType }`.
+2. Construye un `blobName` como `${userId}/${uuid()}-${fileName}`.
+3. Firma un **SAS de escritura y creación** con `@azure/storage-blob`:
+
+```ts
+import {
+  StorageSharedKeyCredential,
+  BlobSASPermissions,
+  generateBlobSASQueryParameters
+} from "@azure/storage-blob";
+
+const cred = new StorageSharedKeyCredential(
+  env.azureStorage.account!,
+  env.azureStorage.key!
+);
+
+const sas = generateBlobSASQueryParameters(
+  {
+    containerName: env.azureStorage.container,
+    blobName,
+    permissions: BlobSASPermissions.parse("cw"),    // create + write
+    startsOn: new Date(Date.now() - 60 * 1000),     // 1 min de skew
+    expiresOn: new Date(Date.now() + env.azureStorage.sasTtlMinutes * 60 * 1000),
+    contentType
+  },
+  cred
+).toString();
+
+const url = `https://${env.azureStorage.account}.blob.core.windows.net/${env.azureStorage.container}/${blobName}?${sas}`;
+```
+
+4. El cliente hace `PUT $url` con cabecera `x-ms-blob-type: BlockBlob` y el binario. Sólo ese blob concreto es escribible, sólo durante la ventana.
+5. Para descargas privadas se firma otro SAS con permiso `r` y TTL corto.
+
+El paquete `@azure/storage-blob` ya está en `package.json`. Las variables `AZURE_STORAGE_ACCOUNT` / `AZURE_STORAGE_KEY` / `AZURE_STORAGE_CONTAINER` ya están parseadas en `env.ts` bajo `env.azureStorage`.
 
 ### 6. Checklist final
 
-- [x] App Service desplegado desde GitHub, accesible por URL pública HTTPS.
-- [x] Variables de entorno configuradas (incluido `JWT_SECRET` y conexión a PostgreSQL).
-- [x] Base de datos gestionada (Azure PostgreSQL Flexible Server).
-- [x] Estrategia de uploads vía SAS sobre Azure Blob Storage definida.
-- [x] Logs disponibles en `App Service → Log stream`; métricas básicas en `Monitor`.
+- [x] App Service Linux con Node 20 desplegado desde GitHub vía GitHub Actions.
+- [x] URL pública HTTPS: `https://<APP>.azurewebsites.net`.
+- [x] Variables de entorno configuradas (incluido `JWT_SECRET` y conexión a Azure SQL).
+- [x] Base de datos gestionada: **Azure SQL Database** (driver `mssql` en TypeORM).
+- [x] Estrategia de uploads vía SAS sobre Azure Blob Storage definida y dependencia instalada.
+- [x] Logs en `App Service → Log stream`; métricas en `Monitor` / Application Insights.
 
 ---
 

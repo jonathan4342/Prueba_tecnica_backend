@@ -5,10 +5,6 @@ import { IUserRepository } from "../../../domain/ports/out/IUserRepository";
 import { TYPES } from "../../../commons/container/types";
 import { UserEntity } from "../entities/UserEntity";
 
-/**
- * Adaptador driven que implementa IUserRepository (que a su vez extiende
- * el genérico IRepository<User, string>).
- */
 @injectable()
 export class TypeOrmUserRepository implements IUserRepository {
   private readonly repo: Repository<UserEntity>;
