@@ -1,9 +1,4 @@
-/**
- * Puerto de salida para generación / verificación de tokens.
- *
- * El dominio no conoce JWT. Un adaptador de infraestructura
- * (JwtTokenService) implementa esta interfaz.
- */
+
 export interface TokenPayload {
   sub: string;
   email: string;

@@ -1,5 +1,5 @@
 import { CryptoAsset } from "../../entities/CryptoAsset";
-import { IExternalDataProvider } from "../shared/IExternalDataProvider";
+import { IExternalDataProvider } from "../../../commons/application/IExternalDataProvider";
 
 /**
  * Consulta tipada para el proveedor de activos financieros.

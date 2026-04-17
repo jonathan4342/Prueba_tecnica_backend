@@ -1,5 +1,5 @@
 import { CryptoAsset } from "../../entities/CryptoAsset";
-import { IUseCase } from "../shared/IUseCase";
+import { IUseCase } from "../../../commons/application/IUseCase";
 
 export interface GetTopCryptoAssetsInput {
   limit: number;

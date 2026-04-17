@@ -8,10 +8,7 @@ export interface AuthedRequest extends Request {
   user?: { id: string; email: string };
 }
 
-/**
- * Middleware JWT que delega la verificación al puerto ITokenService.
- * No conoce jsonwebtoken; podría probarse con un mock trivial.
- */
+
 @injectable()
 export class AuthMiddleware {
   constructor(@inject(TYPES.TokenService) private readonly tokens: ITokenService) {}

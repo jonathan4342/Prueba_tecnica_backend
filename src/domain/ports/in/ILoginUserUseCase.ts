@@ -1,4 +1,4 @@
-import { IUseCase } from "../shared/IUseCase";
+import { IUseCase } from "../../../commons/application/IUseCase";
 import { IssuedToken } from "../out/ITokenService";
 
 export interface LoginUserInput {
