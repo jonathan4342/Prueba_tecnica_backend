@@ -7,15 +7,44 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DB_TYPE: sqlite
-      DB_DATABASE: /app/data/app.db
+      # Por defecto arrancamos con SQL Server levantado en el servicio `mssql` de abajo.
+      DB_TYPE: mssql
+      DB_HOST: mssql
+      DB_PORT: 1433
+      DB_USERNAME: sa
+      DB_PASSWORD: ${MSSQL_SA_PASSWORD:-YourStrong!Passw0rd}
+      DB_DATABASE: appdb
+      DB_SSL: "true"
+      DB_TRUST_SERVER_CERTIFICATE: "true"
+      DB_SYNCHRONIZE: "true"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       JWT_EXPIRES_IN: 1h
       COINGECKO_BASE_URL: https://api.coingecko.com/api/v3
       COINGECKO_DEFAULT_VS_CURRENCY: usd
-    volumes:
-      - api-data:/app/data
+    depends_on:
+      mssql:
+        condition: service_healthy
     restart: unless-stopped
 
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: prueba-tecnica-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-YourStrong!Passw0rd}
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
-  api-data:
+  mssql-data:

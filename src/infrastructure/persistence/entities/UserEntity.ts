@@ -6,12 +6,6 @@ import {
   PrimaryColumn
 } from "typeorm";
 
-/**
- * Entidad TypeORM para usuarios.
- *
- * Vive en la capa de INFRAESTRUCTURA. El dominio la desconoce por completo;
- * el adaptador repositorio se encarga de convertir esta fila en `domain.User`.
- */
 @Entity({ name: "users" })
 export class UserEntity {
   @PrimaryColumn("varchar", { length: 36 })
